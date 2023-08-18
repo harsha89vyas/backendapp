@@ -4,13 +4,15 @@ from datetime import datetime
 import os
 from typing import Annotated
 from pathlib import Path
-import io 
+import io
+import uuid 
 
-from fastapi import FastAPI, File, Form, WebSocket, WebSocketDisconnect, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, WebSocket, WebSocketDisconnect, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import redis
+import pandas as pd
 from util.process import Processor
 
 logging.basicConfig(level=logging.INFO)
@@ -106,7 +108,7 @@ async def uploadTableFile(request: Request,type: Annotated[str, Form()], session
     return {"filename": file.filename, "filetype": file.content_type, "filedata": file_data}
 
 @app.post("/api/process")
-async def processTableFile(request: Request, session:Annotated[str, Form()]):
+async def processTableFile(request: Request, session:Annotated[str, Form()], background_tasks: BackgroundTasks):
     print("processing")
     table_file = r.get(f"table_{session}")
     template_file = r.get(f"template_{session}")
@@ -114,13 +116,19 @@ async def processTableFile(request: Request, session:Annotated[str, Form()]):
     r.set(f"{session}_response", "processing")
     print("set response")
     processor= Processor(session=session)
-    generated_df = await processor.process_files(table_file, template_file)
+    file_guid = str(uuid.uuid4())
+    background_tasks.add_task(processor.process_files, table_file, template_file, file_guid)
+    return {'response': file_guid}
+
+@app.post("/api/download")
+async def downloadFile(request: Request, session:Annotated[str, Form()], file_guid:Annotated[str, Form()]):
+    print("downloading")
+    generated_df = pd.read_msgpack(r.get(f"{session}_{file_guid}"))#r.get(f"{session}_{file_guid}")
     stream = io.StringIO()
     generated_df.to_csv(stream, index=False)
     response = StreamingResponse(
         iter([stream.getvalue()]), media_type="text/csv")
     response.headers["Content-Disposition"] = "attachment; filename=generated_file.csv"
     return response
-
 # static_root_absolute = Path(__file__).parent.resolve()/'static'
 # app.mount("/", StaticFiles(directory=static_root_absolute), name="static")

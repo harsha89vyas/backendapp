@@ -52,7 +52,7 @@ class Processor:
             await asyncio.sleep(1)
         return message['data'].decode('utf-8')
 
-    async def process_files(self, table_file, template_file):
+    async def process_files(self, table_file, template_file, file_guid):
         table_string = table_file.decode('utf-8')
         template_string = template_file.decode('utf-8')
         llm = ChatOpenAI(openai_api_key=config.OPENAI_API_KEY, temperature=0, model="gpt-3.5-turbo-0613", )
@@ -82,7 +82,9 @@ class Processor:
         new_table_df = table_df.loc[:,[code.table_column for code in codes]]
         for code in codes:
             new_table_df[code.table_column].apply(lambda x: self.format_value(x,code=code.code))
-        return new_table_df
+        r.set(f"{self.session}_{file_guid}", new_table_df.to_msgpack(compress='zlib'))
+        r.publish(f'{self.session}_response', f'file_guid:{file_guid}')
+
     
     def format_value(self, source_value, code):
         value = TransformValue(source=source_value,destination=source_value)
