@@ -22,7 +22,7 @@ app = FastAPI()
 
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-r = redis.from_url(os.environ.get("REDIS_TLS_URL"))
+r = redis.from_url(os.environ.get("REDIS_URL"))
 
 
 @app.websocket("/ws/{session_id}")
